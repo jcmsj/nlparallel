@@ -3,7 +3,7 @@
 ## Setup
 1. Install Python 3.11 or higher.
 ```bash 
-git clone https://jcmsj/nlparallel.git
+git clone https://github.com/jcmsj/nlparallel.git
 cd <project folder>
 # Create a python virtual environment
 python -m venv .venv 
