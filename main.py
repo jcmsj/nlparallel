@@ -69,23 +69,32 @@ Candidate = namedtuple(
     "Candidate", ["lemma", "word", "start", "end", "profanity", "edit_distance"]
 )
 
-def scan_text(text: str, distance: int) -> list[Candidate]:
-
+def scan_text(text: str, distance: int, substitution_cost:int=1, transpositions:bool=False) -> list[Candidate]:
+    """
+    Scans the text for profanity words with an edit distance up to `distance`
+    """
     no_stop_words_spans = remove_stop_words(text)
     filtered_spans = lemmatize(no_stop_words_spans)
-
+    max_distance = distance+1
     matched: dict[str, list[Candidate]] = {}
     # loop through the filtered words and check if it is the matched, if it is, add to the matched, if a word is matched w/ a different profanity word, keep the one w/ the lowest edit distance
     for span in filtered_spans:
+        # skip one char words
+        if len(span.word) <= 1:
+            continue
+        lowerLemma = span.lemma.lower()
+        if lowerLemma in en_dictionary:
+            continue
+
         min_candidates = []
+        min_distance = max_distance
+        # Remove words in the dictionary based on the lemma
         for profanity in profanity_words:
-            # skip one char words
-            if len(span.word) <= 1:
-                continue
-            # Remove words in the dictionary based on the lemma
-            if span.lemma.lower() in en_dictionary:
-                continue
-            edit_distance = nltk.edit_distance(profanity, span.lemma.lower())
+            edit_distance = nltk.edit_distance(
+                profanity, 
+                lowerLemma, 
+                substitution_cost=substitution_cost, 
+                transpositions=transpositions)
             # skip words w/ the same edit distance for both word and lemma
             if edit_distance == len(span.word) or edit_distance == len(span.lemma):
                 continue
@@ -103,25 +112,24 @@ def scan_text(text: str, distance: int) -> list[Candidate]:
             )
           
             # compare w/ distance, then w/ min_candidate
-            if c.edit_distance <= distance:
-                if len(min_candidates) == 0: 
-                    min_candidates.append(c)
-                elif c.edit_distance < min_candidates[0].edit_distance:
-                    min_candidates = [c]
-                else:
-                    min_candidates.append(c)
+            if c.edit_distance > distance:
+                continue
+            if c.edit_distance == 0:
+                min_candidates = [c]
+                break
+            elif c.edit_distance < min_distance:
+                min_candidates = [c]
+                min_distance = c.edit_distance
+            elif c.edit_distance == min_distance:
+                min_candidates.append(c)
 
         if len(min_candidates) > 0:
             if (span.word in matched):
                 matched[span.word].extend(min_candidates)
             else:
                 matched[span.word] = min_candidates
-     
     # flatten matched into a list return value
-    _m:list[Candidate] = []
-    for c in matched.values():
-        _m.extend(c)
-    return _m
+    return [item for sublist in matched.values() for item in sublist]
 
 # argparse
 def cli():
