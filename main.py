@@ -22,17 +22,14 @@
 #  assemble -> ass
 #   false xerox
 import nltk
-from nltk.corpus import stopwords
 from collections import namedtuple
 
-from numpy import mat
-from data import profanity_words,en_dictionary
+from data import profanity_words,en_trie, stop_words_en
 
 # import pygtrie
 
 WordSpan = namedtuple("WordSpan", ["word", "start", "end"])
 def remove_stop_words(text: str) -> list[WordSpan]:
-    stop_words = set(stopwords.words("english"))
     tokenizer = nltk.WordPunctTokenizer()
     spans = list(tokenizer.span_tokenize(text))
     tokens = [text[start:end] for start, end in spans]
@@ -45,12 +42,11 @@ def remove_stop_words(text: str) -> list[WordSpan]:
             end=spans[i][1],
         )
         for i, w in enumerate(tokens)
-        if not w.lower() in stop_words
+        if not w.lower() in stop_words_en
     ]
     return filtered
 
 lemmamedWordSpan = namedtuple("lemmamedSpan", ["lemma", "word", "start", "end"])
-from nltk.stem import PorterStemmer
 def lemmatize(span: list[WordSpan]):
     lemmamer = nltk.WordNetLemmatizer()
     
@@ -82,21 +78,26 @@ def scan_text(text: str, distance: int, substitution_cost:int=1, transpositions:
         # skip one char words
         if len(span.word) <= 1:
             continue
+
         lowerLemma = span.lemma.lower()
-        if lowerLemma in en_dictionary:
+        if lowerLemma in en_trie:
             continue
 
         min_candidates = []
         min_distance = max_distance
-        # Remove words in the dictionary based on the lemma
+
+        # if span.word is in matched, copy the profanity and edit_distance
+
         for profanity in profanity_words:
+        # Remove words in the dictionary based on the lemma
             edit_distance = nltk.edit_distance(
                 profanity, 
                 lowerLemma, 
                 substitution_cost=substitution_cost, 
                 transpositions=transpositions)
+            # compare w/ distance, then w/ min_candidate
             # skip words w/ the same edit distance for both word and lemma
-            if edit_distance == len(span.word) or edit_distance == len(span.lemma):
+            if edit_distance > distance or edit_distance == len(span.lemma): # or edit_distance == len(span.word) or :
                 continue
             c = Candidate(
                 lemma=span.lemma,
@@ -111,9 +112,6 @@ def scan_text(text: str, distance: int, substitution_cost:int=1, transpositions:
                 # ),
             )
           
-            # compare w/ distance, then w/ min_candidate
-            if c.edit_distance > distance:
-                continue
             if c.edit_distance == 0:
                 min_candidates = [c]
                 break
@@ -130,6 +128,79 @@ def scan_text(text: str, distance: int, substitution_cost:int=1, transpositions:
                 matched[span.word] = min_candidates
     # flatten matched into a list return value
     return [item for sublist in matched.values() for item in sublist]
+
+import multiprocessing as mp
+from functools import reduce
+
+# Define a worker function that will process a chunk of spans
+# def worker(chunk, max_distance: int = 2, distance: int = 1, substitution_cost:int=1, transpositions:bool=False):
+#     matched: dict[str, list[Candidate]] = {}
+#     for span in chunk:
+#         if len(span.word) <= 1:
+#             continue
+
+#         lowerLemma = span.lemma.lower()
+#         if lowerLemma in en_trie:
+#             continue
+
+#         min_candidates = []
+#         min_distance = max_distance
+
+#         for profanity in profanity_words:
+#             edit_distance = nltk.edit_distance(
+#                 profanity, 
+#                 lowerLemma, 
+#                 substitution_cost=substitution_cost, 
+#                 transpositions=transpositions)
+#             if edit_distance > distance or edit_distance == len(span.lemma):
+#                 continue
+#             c = Candidate(
+#                 lemma=span.lemma,
+#                 word=span.word,
+#                 start=span.start,
+#                 end=span.end,
+#                 profanity=profanity,
+#                 edit_distance=edit_distance,
+#             )
+            
+#             if c.edit_distance == 0:
+#                 min_candidates = [c]
+#                 break
+#             elif c.edit_distance < min_distance:
+#                 min_candidates = [c]
+#                 min_distance = c.edit_distance
+#             elif c.edit_distance == min_distance:
+#                 min_candidates.append(c)
+
+#         if len(min_candidates) > 0:
+#             if (span.word in matched):
+#                 matched[span.word].extend(min_candidates)
+#             else:
+#                 matched[span.word] = min_candidates
+#     return matched
+# def scan_text_parallel(text: str, distance: int, substitution_cost:int=1, transpositions:bool=False) -> list[Candidate]:
+#     """
+#     Scans the text for profanity words with an edit distance up to `distance`
+#     """
+#     no_stop_words_spans = remove_stop_words(text)
+#     filtered_spans = lemmatize(no_stop_words_spans)
+#     max_distance = distance+1
+
+#     # Split the spans into chunks
+#     chunk_size = len(filtered_spans) // mp.cpu_count()
+#     chunks = [
+#         filtered_spans[i:i + chunk_size]
+#         for i in range(0, len(filtered_spans), chunk_size)
+#     ]
+
+#     # Create a pool of workers
+#     pool = mp.Pool(mp.cpu_count())
+#     results = pool.map(
+#         worker,
+#         chunks,
+#         chunksize=1,
+#     )
+#     return [item for sublist in reduce(lambda x, y: {**x, **y}, results).values() for item in sublist]
 
 # argparse
 def cli():

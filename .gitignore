@@ -1,4 +1,7 @@
 .venv
 __pycache__
-.nix
+*.nix
 *copy.*
+.direnv
+.devenv
+
