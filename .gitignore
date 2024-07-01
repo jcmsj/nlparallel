@@ -4,4 +4,6 @@ __pycache__
 *copy.*
 .direnv
 .devenv
-
+flake.nix
+flake.lock
+.envrc
