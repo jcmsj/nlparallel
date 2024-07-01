@@ -84,36 +84,45 @@ distanceFil = 4
 distanceEN = 4
 
 import time
+import argparse
+if __name__ == "__main__":
+    # Create argument parser
+    parser = argparse.ArgumentParser(description='Benchmark script')
+    parser.add_argument('runs', type=int, default=10, help='Number of runs for each version. Defaults to 10')
 
-RUN_COUNT = 10  # Number of runs for each version
+    # Parse command line arguments
+    args = parser.parse_args()
 
-# Accumulators for total execution times
-total_time_concurrent = 0
-total_time_non_concurrent = 0
+    # Assign run count from command line argument
+    RUN_COUNT = args.runs
 
-for _ in range(RUN_COUNT):
-    # Benchmark concurrent version
-    start_time_concurrent = time.time()
-    result_concurrent = scan_both(text, distanceFil, distanceEN)
-    end_time_concurrent = time.time()
-    total_time_concurrent += (end_time_concurrent - start_time_concurrent)
+    # Accumulators for total execution times
+    total_time_concurrent = 0
+    total_time_non_concurrent = 0
 
-    # Benchmark non-concurrent version
-    start_time_non_concurrent = time.time()
-    result_non_concurrent = scan_both_non_concurrent(text, distanceFil, distanceEN)
-    end_time_non_concurrent = time.time()
-    total_time_non_concurrent += (end_time_non_concurrent - start_time_non_concurrent)
+    for _ in range(RUN_COUNT):
+        # Benchmark concurrent version
+        start_time_concurrent = time.time()
+        result_concurrent = scan_both(text, distanceFil, distanceEN)
+        end_time_concurrent = time.time()
+        total_time_concurrent += (end_time_concurrent - start_time_concurrent)
 
-# Calculate average execution times
-avg_time_concurrent = total_time_concurrent / RUN_COUNT
-avg_time_non_concurrent = total_time_non_concurrent / RUN_COUNT
+        # Benchmark non-concurrent version
+        start_time_non_concurrent = time.time()
+        result_non_concurrent = scan_both_non_concurrent(text, distanceFil, distanceEN)
+        end_time_non_concurrent = time.time()
+        total_time_non_concurrent += (end_time_non_concurrent - start_time_non_concurrent)
 
-# Print average execution times
-print(f"Average concurrent execution time: {avg_time_concurrent} seconds")
-print(f"Average non-concurrent execution time: {avg_time_non_concurrent} seconds")
+    # Calculate average execution times
+    avg_time_concurrent = total_time_concurrent / RUN_COUNT
+    avg_time_non_concurrent = total_time_non_concurrent / RUN_COUNT
 
-# Show which is faster in %
-if avg_time_concurrent < avg_time_non_concurrent:
-    print(f"Concurrent version is {((avg_time_non_concurrent - avg_time_concurrent) / avg_time_non_concurrent) * 100}% faster")
-else:
-    print(f"Non-concurrent version is {((avg_time_concurrent - avg_time_non_concurrent) / avg_time_concurrent) * 100}% faster")
+    # Print average execution times
+    print(f"Average concurrent execution time: {avg_time_concurrent} seconds")
+    print(f"Average non-concurrent execution time: {avg_time_non_concurrent} seconds")
+
+    # Show which is faster in %
+    if avg_time_concurrent < avg_time_non_concurrent:
+        print(f"Concurrent version is {((avg_time_non_concurrent - avg_time_concurrent) / avg_time_non_concurrent) * 100}% faster")
+    else:
+        print(f"Non-concurrent version is {((avg_time_concurrent - avg_time_non_concurrent) / avg_time_concurrent) * 100}% faster")
