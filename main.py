@@ -21,126 +21,37 @@
 # Handling false positives:
 #  assemble -> ass
 #   false xerox
-import nltk
-from collections import namedtuple
-
-from english import profanity_words,en_trie, stop_words_en
-
-# import pygtrie
-
-WordSpan = namedtuple("WordSpan", ["word", "start", "end"])
-def remove_stop_words(text: str) -> list[WordSpan]:
-    tokenizer = nltk.WordPunctTokenizer()
-    spans = list(tokenizer.span_tokenize(text))
-    tokens = [text[start:end] for start, end in spans]
-    # converts the words in word_tokens to lower case and then checks whether
-    # they are present in stop_words or not
-    filtered = [
-        WordSpan(
-            word=w,
-            start=spans[i][0],
-            end=spans[i][1],
-        )
-        for i, w in enumerate(tokens)
-        if not w.lower() in stop_words_en
-    ]
-    return filtered
-
-lemmamedWordSpan = namedtuple("lemmamedSpan", ["lemma", "word", "start", "end"])
-def lemmatize(span: list[WordSpan]):
-    lemmamer = nltk.WordNetLemmatizer()
-    
-    return [
-        lemmamedWordSpan(
-            lemma=lemmamer.lemmatize(wordSpan.word),
-            word=wordSpan.word,
-            start=wordSpan.start,
-            end=wordSpan.end,
-        )
-        for wordSpan in span
-    ]
-
-# Declaring namedtuple()
-Candidate = namedtuple(
-    "Candidate", ["lemma", "word", "start", "end", "profanity", "edit_distance"]
-)
-
-def scan_text(text: str, distance: int, substitution_cost:int=1, transpositions:bool=False) -> list[Candidate]:
-    """
-    Scans the text for profanity words with an edit distance up to `distance`
-    """
-    no_stop_words_spans = remove_stop_words(text)
-    filtered_spans = lemmatize(no_stop_words_spans)
-    max_distance = distance+1
-    matched: dict[str, list[Candidate]] = {}
-    # loop through the filtered words and check if it is the matched, if it is, add to the matched, if a word is matched w/ a different profanity word, keep the one w/ the lowest edit distance
-    for span in filtered_spans:
-        # skip one char words
-        if len(span.word) <= 1:
-            continue
-
-        lowerLemma = span.lemma.lower()
-        if lowerLemma in en_trie:
-            continue
-
-        min_candidates = []
-        min_distance = max_distance
-
-        # if span.word is in matched, copy the profanity and edit_distance
-
-        for profanity in profanity_words:
-        # Remove words in the dictionary based on the lemma
-            edit_distance = nltk.edit_distance(
-                profanity, 
-                lowerLemma, 
-                substitution_cost=substitution_cost, 
-                transpositions=transpositions)
-            # compare w/ distance, then w/ min_candidate
-            # skip words w/ the same edit distance for both word and lemma
-            if edit_distance > distance or edit_distance == len(span.lemma): # or edit_distance == len(span.word) or :
-                continue
-            c = Candidate(
-                lemma=span.lemma,
-                word=span.word,
-                start=span.start,
-                end=span.end,
-                profanity=profanity,
-                edit_distance=edit_distance,
-                # min(
-                #     nltk.edit_distance(profanity, span.word), 
-                #     nltk.edit_distance(profanity, span.lemma)
-                # ),
-            )
-          
-            if c.edit_distance == 0:
-                min_candidates = [c]
-                break
-            elif c.edit_distance < min_distance:
-                min_candidates = [c]
-                min_distance = c.edit_distance
-            elif c.edit_distance == min_distance:
-                min_candidates.append(c)
-
-        if len(min_candidates) > 0:
-            if (span.word in matched):
-                matched[span.word].extend(min_candidates)
-            else:
-                matched[span.word] = min_candidates
-    # flatten matched into a list return value
-    return [item for sublist in matched.values() for item in sublist]
-
-import multiprocessing as mp
+from lang import lemmatize_en, lemmatize_fil, columns as candidateColumns, en, fil
+from prepare import Candidate, scan_text
+import concurrent.futures
 
 # argparse
 def cli():
     import argparse
+
     parser = argparse.ArgumentParser(description="Scan text for profanity")
     parser.add_argument("text", type=str, help="Text to scan")
     parser.add_argument(
-        "-d","--distance",
+        "-d",
+        "--distance",
         type=int,
-        default=1,
+        default=4,
         help="Maximum edit distance to consider a word as a profanity",
+    )
+    # distance fil
+    parser.add_argument(
+        "-d-fil",
+        "--distance-filipino",
+        type=int,
+        default=4,
+        help="Overide for edit distance for Filipino",
+    )
+    parser.add_argument(
+        "-d-en",
+        "--distance-english",
+        type=int,
+        default=4,
+        help="Overide for edit distance for English",
     )
     # -o output file
     parser.add_argument(
@@ -153,16 +64,84 @@ def cli():
     args = parser.parse_args()
     return args
 
+
+def scan_both(text: str, distanceFil: int, distanceEN: int):
+    """Scan text in both languages concurrently
+    Args:
+        text (str): Text to scan
+        distanceFil (int): Maximum edit distance to consider a word as a profanity for Filipino
+        distanceEN (int): Maximum edit distance to consider a word as a profanity for English
+    """
+    with concurrent.futures.ProcessPoolExecutor(max_workers=2) as executor:
+        future_fil = executor.submit(
+            scan_text_filipino,
+            text,
+            distanceFil,
+        )
+        future_english = executor.submit(
+            scan_text_english,
+            text,
+            distanceEN,
+        )
+        result_fil = future_fil.result()
+        result_en = future_english.result()
+    return {"fil": result_fil, "en": result_en}
+
+def scan_text_filipino(text, distance):
+    # Use filipino-specific globals and arguments
+    return scan_text(
+        profanity_words=fil.profanity,
+        stop_words=fil.stopwords,
+        word_dictionary=fil.dictionary,
+        lemmatize=lemmatize_fil,
+        text=text,
+        distance=distance,
+    )
+
+def scan_text_english(text, distance):
+    # Use english-specific globals and arguments
+    return scan_text(
+        profanity_words=en.profanity,
+        stop_words=en.stopwords,
+        word_dictionary=en.dictionary,
+        lemmatize=lemmatize_en,
+        text=text,
+        distance=distance,
+    )
+
+def scan_both_non_concurrent(text: str, distanceFil: int, distanceEN: int):
+    result_fil = scan_text_filipino(text, distanceFil)
+    result_en = scan_text_english(text, distanceEN)
+    return {"fil": result_fil, "en": result_en}
+
+def toDf(cs: list[Candidate]):
+    import pandas as pd
+
+    return pd.DataFrame.from_records(cs, columns=candidateColumns)
+
+
 def main():
     """Run if main module"""
     import pandas as pd
+
     args = cli()
-    candidates = scan_text(args.text, args.distance)
-    pd.DataFrame.from_records(candidates)
+    # override distance for filipino and english
+    distanceEN = args.distance_english or args.distance
+    distanceFil = args.distance_filipino or args.distance
+    result: dict[str, list[Candidate]] = scan_both(
+        args.text, distanceFil=distanceFil, distanceEN=distanceEN
+    )
+    # combine the results while adding a language column
+    df_fil = toDf(result["fil"])
+    df_en = toDf(result["en"])
+    result_fil = df_fil.assign(language="fil")
+    result_en = df_en.assign(language="en")
+    combined = pd.concat([result_fil, result_en])
     if args.output:
-        pd.DataFrame.from_records(candidates).to_csv(args.output, index=False)
+        combined.to_csv(args.output, index=False)
     else:
-        print(candidates)
+        print(combined)
+
 
 if __name__ == "__main__":
     main()
