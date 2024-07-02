@@ -27,6 +27,11 @@ ptyprocess==0.7.0
 pure-eval==0.2.2
 Pygments==2.18.0
 pygtrie==2.5.0
+PyQt5-Qt5==5.15.14
+PyQt5-sip==12.13.0
+PyQt6==6.7.0
+PyQt6-Qt6==6.7.2
+PyQt6-sip==13.6.0
 python-dateutil==2.9.0.post0
 pytz==2024.1
 pyzmq==26.0.3
